@@ -1,0 +1,34 @@
+name: astro_pandit
+description: "Astro Pandit - Login + OTP like Astrologer"
+publish_to: 'none' 
+
+version: 1.0.0+1
+
+environment:
+  sdk: ^3.10.4
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  cupertino_icons: ^1.0.8
+  dio: ^5.4.0
+  shared_preferences: ^2.2.2
+  intl: ^0.19.0
+  flutter_riverpod: ^2.5.1
+  lottie: ^3.1.0
+  firebase_core: ^4.5.0
+  firebase_messaging: ^16.1.2
+  agora_rtc_engine: ^6.5.3
+  permission_handler: ^12.0.1
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+
+flutter:
+  uses-material-design: true
+
+  # assets (commented due to missing files)
+  # - assets/images/
