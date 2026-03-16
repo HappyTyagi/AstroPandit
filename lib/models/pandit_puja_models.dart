@@ -10,6 +10,8 @@ class PanditPujaBooking {
   final int? slotId;
   final DateTime? slotTime;
   final DateTime? bookedAt;
+  final DateTime? startedAt;
+  final DateTime? completedAt;
   final String status;
   final String paymentMethod;
   final String transactionId;
@@ -28,6 +30,8 @@ class PanditPujaBooking {
     required this.slotId,
     required this.slotTime,
     required this.bookedAt,
+    required this.startedAt,
+    required this.completedAt,
     required this.status,
     required this.paymentMethod,
     required this.transactionId,
@@ -48,6 +52,8 @@ class PanditPujaBooking {
       slotId: _readIntNullable(json['slotId']),
       slotTime: _readDate(json['slotTime']),
       bookedAt: _readDate(json['bookedAt']),
+      startedAt: _readDate(json['startedAt']),
+      completedAt: _readDate(json['completedAt']),
       status: (json['bookingStatus'] ?? json['status'] ?? '').toString(),
       paymentMethod: (json['paymentMethod'] ?? '').toString(),
       transactionId: (json['transactionId'] ?? '').toString(),
@@ -112,4 +118,3 @@ DateTime? _readDate(dynamic value) {
   if (value == null) return null;
   return DateTime.tryParse(value.toString());
 }
-

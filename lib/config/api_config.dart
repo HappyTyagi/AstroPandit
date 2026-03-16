@@ -1,6 +1,6 @@
 class ApiConfig {
   // Base URL - Same as Astrologer
-  static const String baseUrl = 'http://192.168.137.10:1234';
+  static const String baseUrl = 'http://192.168.29.235:1234';
 
   // OTP Endpoints
   static const String sendOtp = '/otp/send';

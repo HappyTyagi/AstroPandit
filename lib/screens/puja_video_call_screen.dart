@@ -2,7 +2,6 @@ import 'package:agora_rtc_engine/agora_rtc_engine.dart';
 import 'package:flutter/material.dart';
 
 import '../services/agora_video_call_service.dart';
-import '../theme/app_theme.dart';
 
 class PujaVideoCallScreen extends StatefulWidget {
   final String appId;
@@ -143,8 +142,10 @@ class _PujaVideoCallScreenState extends State<PujaVideoCallScreen> {
 
     return Scaffold(
       backgroundColor: Colors.black,
+      extendBodyBehindAppBar: true,
       appBar: AppBar(
-        backgroundColor: AppTheme.primaryIndigo,
+        backgroundColor: Colors.black.withValues(alpha: 0.25),
+        surfaceTintColor: Colors.transparent,
         foregroundColor: Colors.white,
         title: Text(isVideo ? 'Puja Video Call' : 'Puja Audio Call'),
       ),
@@ -242,46 +243,55 @@ class _PujaVideoCallScreenState extends State<PujaVideoCallScreen> {
       child: SafeArea(
         child: Padding(
           padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-            children: [
-              IconButton.filled(
-                onPressed: _toggleMic,
-                style: IconButton.styleFrom(
-                  backgroundColor: _micOn
-                      ? Colors.white.withValues(alpha: 0.14)
-                      : Colors.red.withValues(alpha: 0.8),
-                ),
-                icon: Icon(_micOn ? Icons.mic : Icons.mic_off),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            decoration: BoxDecoration(
+              color: Colors.black.withValues(alpha: 0.32),
+              borderRadius: BorderRadius.circular(26),
+              border: Border.all(
+                color: Colors.white.withValues(alpha: 0.08),
               ),
-              if (isVideo)
+            ),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+              children: [
                 IconButton.filled(
-                  onPressed: _toggleCamera,
+                  onPressed: _toggleMic,
                   style: IconButton.styleFrom(
-                    backgroundColor: _cameraOn
+                    backgroundColor: _micOn
                         ? Colors.white.withValues(alpha: 0.14)
                         : Colors.red.withValues(alpha: 0.8),
                   ),
-                  icon: Icon(_cameraOn ? Icons.videocam : Icons.videocam_off),
+                  icon: Icon(_micOn ? Icons.mic : Icons.mic_off),
                 ),
-              if (isVideo)
-                IconButton.filled(
-                  onPressed: _switchCamera,
-                  style: IconButton.styleFrom(
-                    backgroundColor: Colors.white.withValues(alpha: 0.14),
+                if (isVideo)
+                  IconButton.filled(
+                    onPressed: _toggleCamera,
+                    style: IconButton.styleFrom(
+                      backgroundColor: _cameraOn
+                          ? Colors.white.withValues(alpha: 0.14)
+                          : Colors.red.withValues(alpha: 0.8),
+                    ),
+                    icon: Icon(_cameraOn ? Icons.videocam : Icons.videocam_off),
                   ),
-                  icon: const Icon(Icons.cameraswitch),
+                if (isVideo)
+                  IconButton.filled(
+                    onPressed: _switchCamera,
+                    style: IconButton.styleFrom(
+                      backgroundColor: Colors.white.withValues(alpha: 0.14),
+                    ),
+                    icon: const Icon(Icons.cameraswitch),
+                  ),
+                IconButton.filled(
+                  onPressed: _endCall,
+                  style: IconButton.styleFrom(backgroundColor: Colors.red),
+                  icon: const Icon(Icons.call_end),
                 ),
-              IconButton.filled(
-                onPressed: _endCall,
-                style: IconButton.styleFrom(backgroundColor: Colors.red),
-                icon: const Icon(Icons.call_end),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),
     );
   }
 }
-
