@@ -70,6 +70,18 @@ class AuthResponse {
 }
 
 class AuthService {
+  String _normalizeMobile(String value) {
+    final String digits = value.replaceAll(RegExp(r'[^0-9]'), '');
+    if (digits.length <= 10) return digits;
+    return digits.substring(digits.length - 10);
+  }
+
+  bool _isAllowedPanditMobile(String mobileNo) {
+    final configured = _normalizeMobile(ApiConfig.panditMobileNo);
+    if (configured.isEmpty) return true;
+    return _normalizeMobile(mobileNo) == configured;
+  }
+
   // Send Mobile OTP
   Future<OtpSendResponse> sendMobileOtp(String mobileNo) async {
     try {
@@ -107,6 +119,14 @@ class AuthService {
       if (response.statusCode == 200) {
         final data = response.data;
         final authResponse = AuthResponse.fromJson(data);
+        final resolvedMobile = (authResponse.mobileNo ?? mobileNo).trim();
+        if (!_isAllowedPanditMobile(resolvedMobile)) {
+          return AuthResponse(
+            success: false,
+            message: 'Only approved pandit mobile number can login',
+            token: '',
+          );
+        }
 
         // Save to SharedPreferences
         final prefs = await SharedPreferences.getInstance();

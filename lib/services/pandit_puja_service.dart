@@ -5,8 +5,11 @@ import 'api_client.dart';
 class PanditPujaService {
   final ApiClient _client = ApiClient();
 
-  Future<List<PanditPujaBooking>> fetchUpcomingPujas() async {
-    final response = await _client.get(ApiConfig.panditUpcomingPujas);
+  Future<List<PanditPujaBooking>> fetchPujas({bool completedOnly = false}) async {
+    final view = completedOnly ? 'COMPLETED' : 'UPCOMING';
+    final response = await _client.get(
+      '${ApiConfig.panditUpcomingPujas}?view=$view',
+    );
     final data = response.data;
     if (data is! Map) {
       throw Exception('Invalid response from server');

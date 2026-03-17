@@ -21,6 +21,7 @@ dependencies:
   firebase_messaging: ^16.1.2
   agora_rtc_engine: ^6.5.3
   permission_handler: ^12.0.1
+  flutter_dotenv: ^5.1.0
 
 dev_dependencies:
   flutter_test:
@@ -29,6 +30,8 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
+  assets:
+    - .env
 
   # assets (commented due to missing files)
   # - assets/images/

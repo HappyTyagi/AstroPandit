@@ -10,7 +10,14 @@ import '../theme/app_theme.dart';
 import 'puja_video_call_screen.dart';
 
 class UpcomingPujaScreen extends StatefulWidget {
-  const UpcomingPujaScreen({super.key});
+  final bool embedded;
+  final bool completedOnly;
+
+  const UpcomingPujaScreen({
+    super.key,
+    this.embedded = false,
+    this.completedOnly = false,
+  });
 
   @override
   State<UpcomingPujaScreen> createState() => _UpcomingPujaScreenState();
@@ -26,11 +33,13 @@ class _UpcomingPujaScreenState extends State<UpcomingPujaScreen> {
   @override
   void initState() {
     super.initState();
-    _future = _service.fetchUpcomingPujas();
+    _future = _service.fetchPujas(completedOnly: widget.completedOnly);
   }
 
   Future<void> _reload() async {
-    setState(() => _future = _service.fetchUpcomingPujas());
+    setState(
+      () => _future = _service.fetchPujas(completedOnly: widget.completedOnly),
+    );
     await _future;
   }
 
@@ -185,9 +194,9 @@ class _UpcomingPujaScreenState extends State<UpcomingPujaScreen> {
 
   Future<void> _endPuja(PanditPujaBooking booking) async {
     if (booking.startedAt == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please start puja first.')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Please start puja first.')));
       return;
     }
     if (booking.completedAt != null) {
@@ -212,9 +221,9 @@ class _UpcomingPujaScreenState extends State<UpcomingPujaScreen> {
     try {
       await _sessionService.endPuja(bookingId: booking.bookingId, otp: otp);
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Puja ended successfully')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Puja ended successfully')));
       await _reload();
     } catch (e) {
       if (!mounted) return;
@@ -250,9 +259,9 @@ class _UpcomingPujaScreenState extends State<UpcomingPujaScreen> {
       return;
     }
     if (booking.completedAt != null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Puja already completed.')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Puja already completed.')));
       return;
     }
 
@@ -284,41 +293,44 @@ class _UpcomingPujaScreenState extends State<UpcomingPujaScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      body: Container(
-        decoration: AppTheme.pageBackdrop(),
-        child: FutureBuilder<List<PanditPujaBooking>>(
-          future: _future,
-          builder: (context, snapshot) {
-            final waiting = snapshot.connectionState == ConnectionState.waiting;
-            final error = snapshot.error;
-            final items = snapshot.data ?? <PanditPujaBooking>[];
+    final content = Container(
+      decoration: AppTheme.pageBackdrop(),
+      child: FutureBuilder<List<PanditPujaBooking>>(
+        future: _future,
+        builder: (context, snapshot) {
+          final waiting = snapshot.connectionState == ConnectionState.waiting;
+          final error = snapshot.error;
+          final items = snapshot.data ?? <PanditPujaBooking>[];
 
-            return RefreshIndicator(
-              onRefresh: _reload,
-              child: CustomScrollView(
-                physics: const AlwaysScrollableScrollPhysics(),
-                slivers: <Widget>[
-                  SliverAppBar(
-                    pinned: true,
-                    backgroundColor: Colors.transparent,
-                    surfaceTintColor: Colors.transparent,
-                    title: const Text(
-                      'Upcoming Pujas',
-                      style: TextStyle(fontWeight: FontWeight.w900),
-                    ),
-                    leading: IconButton(
-                      onPressed: () => Navigator.pop(context),
-                      icon: const Icon(Icons.arrow_back_rounded),
-                    ),
-                    actions: <Widget>[
-                      IconButton(
-                        onPressed: _reload,
-                        icon: const Icon(Icons.refresh_rounded),
-                        tooltip: 'Refresh',
-                      ),
-                    ],
+          return RefreshIndicator(
+            onRefresh: _reload,
+            child: CustomScrollView(
+              physics: const AlwaysScrollableScrollPhysics(),
+              slivers: <Widget>[
+                SliverAppBar(
+                  pinned: true,
+                  backgroundColor: Colors.transparent,
+                  surfaceTintColor: Colors.transparent,
+                  automaticallyImplyLeading: !widget.embedded,
+                  title: Text(
+                    widget.completedOnly ? 'Complete Puja' : 'Upcoming Puja',
+                    style: const TextStyle(fontWeight: FontWeight.w900),
                   ),
+                  leading: widget.embedded
+                      ? null
+                      : IconButton(
+                          onPressed: () => Navigator.pop(context),
+                          icon: const Icon(Icons.arrow_back_rounded),
+                        ),
+                  actions: <Widget>[
+                    IconButton(
+                      onPressed: _reload,
+                      icon: const Icon(Icons.refresh_rounded),
+                      tooltip: 'Refresh',
+                    ),
+                  ],
+                ),
+                if (!widget.completedOnly)
                   SliverToBoxAdapter(
                     child: Padding(
                       padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
@@ -331,7 +343,9 @@ class _UpcomingPujaScreenState extends State<UpcomingPujaScreen> {
                           color: Colors.white.withValues(alpha: 0.75),
                           borderRadius: BorderRadius.circular(18),
                           border: Border.all(
-                            color: AppTheme.primaryIndigo.withValues(alpha: 0.08),
+                            color: AppTheme.primaryIndigo.withValues(
+                              alpha: 0.08,
+                            ),
                           ),
                         ),
                         child: Row(
@@ -357,53 +371,60 @@ class _UpcomingPujaScreenState extends State<UpcomingPujaScreen> {
                       ),
                     ),
                   ),
-                  if (waiting)
-                    const SliverFillRemaining(
-                      hasScrollBody: false,
-                      child: Center(child: CircularProgressIndicator()),
-                    )
-                  else if (error != null)
-                    SliverFillRemaining(
-                      hasScrollBody: false,
-                      child: _ErrorState(
-                        message: error.toString(),
-                        onRetry: _reload,
-                      ),
-                    )
-                  else if (items.isEmpty)
-                    const SliverFillRemaining(
-                      hasScrollBody: false,
-                      child: _EmptyState(),
-                    )
-                  else
-                    SliverPadding(
-                      padding: const EdgeInsets.fromLTRB(16, 12, 16, 18),
-                      sliver: SliverList.separated(
-                        itemCount: items.length,
-                        separatorBuilder: (_, _) => const SizedBox(height: 12),
-                        itemBuilder: (context, index) {
-                          return _BookingCard(
-                            booking: items[index],
-                            isJoinAllowed: _isJoinAllowed,
-                            onStart: _startPuja,
-                            onJoin: _join,
-                            onEnd: _endPuja,
-                          );
-                        },
-                      ),
+                if (waiting)
+                  const SliverFillRemaining(
+                    hasScrollBody: false,
+                    child: Center(child: CircularProgressIndicator()),
+                  )
+                else if (error != null)
+                  SliverFillRemaining(
+                    hasScrollBody: false,
+                    child: _ErrorState(
+                      message: error.toString(),
+                      onRetry: _reload,
                     ),
-                ],
-              ),
-            );
-          },
-        ),
+                  )
+                else if (items.isEmpty)
+                  SliverFillRemaining(
+                    hasScrollBody: false,
+                    child: _EmptyState(completedOnly: widget.completedOnly),
+                  )
+                else
+                  SliverPadding(
+                    padding: const EdgeInsets.fromLTRB(16, 12, 16, 18),
+                    sliver: SliverList.separated(
+                      itemCount: items.length,
+                      separatorBuilder: (_, _) => const SizedBox(height: 12),
+                      itemBuilder: (context, index) {
+                        return _BookingCard(
+                          booking: items[index],
+                          isJoinAllowed: _isJoinAllowed,
+                          onStart: _startPuja,
+                          onJoin: _join,
+                          onEnd: _endPuja,
+                          readOnly: widget.completedOnly,
+                        );
+                      },
+                    ),
+                  ),
+              ],
+            ),
+          );
+        },
       ),
     );
+
+    if (widget.embedded) {
+      return content;
+    }
+    return Scaffold(body: content);
   }
 }
 
 class _EmptyState extends StatelessWidget {
-  const _EmptyState();
+  final bool completedOnly;
+
+  const _EmptyState({required this.completedOnly});
 
   @override
   Widget build(BuildContext context) {
@@ -427,13 +448,15 @@ class _EmptyState extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 18),
-          const Text(
-            'No upcoming pujas',
+          Text(
+            completedOnly ? 'No completed pujas yet' : 'No upcoming pujas',
             style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900),
           ),
           const SizedBox(height: 10),
           Text(
-            'When a puja is assigned to you, it will appear here.',
+            completedOnly
+                ? 'Completed pujas will appear here after you end them with OTP.'
+                : 'When a puja is assigned to you, it will appear here.',
             style: TextStyle(
               color: AppTheme.muted.withValues(alpha: 0.95),
               fontWeight: FontWeight.w600,
@@ -507,6 +530,7 @@ class _BookingCard extends StatelessWidget {
   final Future<void> Function(PanditPujaBooking booking) onStart;
   final Future<void> Function(PanditPujaBooking booking) onJoin;
   final Future<void> Function(PanditPujaBooking booking) onEnd;
+  final bool readOnly;
 
   const _BookingCard({
     required this.booking,
@@ -514,6 +538,7 @@ class _BookingCard extends StatelessWidget {
     required this.onStart,
     required this.onJoin,
     required this.onEnd,
+    this.readOnly = false,
   });
 
   @override
@@ -617,21 +642,25 @@ class _BookingCard extends StatelessWidget {
           const SizedBox(height: 14),
           Divider(color: AppTheme.primaryIndigo.withValues(alpha: 0.08)),
           const SizedBox(height: 14),
-          if (completed)
+          if (completed || readOnly)
             Container(
               width: double.infinity,
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
               decoration: BoxDecoration(
-                color: AppTheme.success.withValues(alpha: 0.08),
+                color: (completed ? AppTheme.success : AppTheme.primaryIndigo)
+                    .withValues(alpha: 0.08),
                 borderRadius: BorderRadius.circular(18),
                 border: Border.all(
-                  color: AppTheme.success.withValues(alpha: 0.18),
+                  color: (completed ? AppTheme.success : AppTheme.primaryIndigo)
+                      .withValues(alpha: 0.18),
                 ),
               ),
-              child: const Text(
-                'Puja completed',
+              child: Text(
+                completed
+                    ? 'Puja completed'
+                    : 'Completion status pending from server',
                 textAlign: TextAlign.center,
-                style: TextStyle(fontWeight: FontWeight.w800),
+                style: const TextStyle(fontWeight: FontWeight.w800),
               ),
             )
           else if (!started)
@@ -697,10 +726,22 @@ class _StatusChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final (label, color, bg) = completed
-        ? ('Completed', AppTheme.success, AppTheme.success.withValues(alpha: 0.12))
+        ? (
+            'Completed',
+            AppTheme.success,
+            AppTheme.success.withValues(alpha: 0.12),
+          )
         : started
-        ? ('In progress', AppTheme.primaryIndigo, AppTheme.gold.withValues(alpha: 0.16))
-        : ('Pending', AppTheme.muted, AppTheme.primaryIndigo.withValues(alpha: 0.06));
+        ? (
+            'In progress',
+            AppTheme.primaryIndigo,
+            AppTheme.gold.withValues(alpha: 0.16),
+          )
+        : (
+            'Pending',
+            AppTheme.muted,
+            AppTheme.primaryIndigo.withValues(alpha: 0.06),
+          );
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),

@@ -1,7 +1,9 @@
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'screens/splash_screen.dart';
 import 'screens/login_screen.dart';
 import 'screens/otp_screen.dart';
@@ -10,6 +12,8 @@ import 'firebase_options.dart';
 import 'theme/app_theme.dart';
 import 'services/api_client.dart';
 import 'services/push_token_sync_service.dart';
+
+const String _languagePrefKey = 'isHindiLanguage';
 
 @pragma('vm:entry-point')
 Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
@@ -20,8 +24,20 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   } catch (_) {}
 }
 
+Future<void> _ensureDefaultLanguagePreference() async {
+  final prefs = await SharedPreferences.getInstance();
+  if (!prefs.containsKey(_languagePrefKey)) {
+    await prefs.setBool(_languagePrefKey, true);
+  }
+}
+
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  try {
+    await dotenv.load(fileName: '.env');
+  } catch (error) {
+    debugPrint('[Pandit] .env load skipped: $error');
+  }
   FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
   await ApiClient().loadToken();
   try {
@@ -32,6 +48,7 @@ void main() async {
   } catch (e) {
     debugPrint('[Pandit] Firebase init failed: $e');
   }
+  await _ensureDefaultLanguagePreference();
   runApp(const ProviderScope(child: AstroPanditApp()));
 }
 
@@ -44,6 +61,22 @@ class AstroPanditApp extends StatelessWidget {
       title: 'AstroPandit',
       debugShowCheckedModeBanner: false,
       theme: AppTheme.lightTheme,
+      builder: (context, child) {
+        final mediaQuery = MediaQuery.of(context);
+        final width = mediaQuery.size.width;
+        final isTablet = width >= 600;
+        final maxWidth = isTablet ? 900.0 : width;
+        return MediaQuery(
+          data: mediaQuery,
+          child: Align(
+            alignment: Alignment.topCenter,
+            child: ConstrainedBox(
+              constraints: BoxConstraints(maxWidth: maxWidth),
+              child: child ?? const SizedBox.shrink(),
+            ),
+          ),
+        );
+      },
       initialRoute: '/',
       routes: {
         '/': (context) => SplashScreen(),

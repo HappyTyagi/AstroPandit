@@ -27,6 +27,11 @@ class _OtpScreenState extends State<OtpScreen> {
   int _resendCountdown = 0;
   Timer? _resendTimer;
 
+  bool _hasPanditRole(String role) {
+    final normalized = role.trim().toUpperCase();
+    return normalized == 'PANDIT' || normalized == 'ASTROLOGER';
+  }
+
   String tr(String key) => AppStrings.tr(key, _isHindi);
 
   @override
@@ -94,7 +99,7 @@ class _OtpScreenState extends State<OtpScreen> {
 
       if (result.success) {
         final role = (result.role ?? '').trim().toUpperCase();
-        if (role.isNotEmpty && role != 'ASTROLOGER') {
+        if (role.isNotEmpty && !_hasPanditRole(role)) {
           final prefs = await SharedPreferences.getInstance();
           await prefs.remove('token');
           await prefs.remove('userId');
@@ -114,7 +119,9 @@ class _OtpScreenState extends State<OtpScreen> {
         if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(result.message.isEmpty ? 'Login successful' : result.message),
+            content: Text(
+              result.message.isEmpty ? 'Login successful' : result.message,
+            ),
             behavior: SnackBarBehavior.floating,
           ),
         );
@@ -124,7 +131,9 @@ class _OtpScreenState extends State<OtpScreen> {
           (Route<dynamic> route) => false,
         );
       } else {
-        _showSnack(result.message.trim().isEmpty ? tr('invalidOtp') : result.message);
+        _showSnack(
+          result.message.trim().isEmpty ? tr('invalidOtp') : result.message,
+        );
         _otpController.clear();
       }
     } catch (e) {
@@ -163,7 +172,9 @@ class _OtpScreenState extends State<OtpScreen> {
       }
       if (!response.success || response.sessionId.trim().isEmpty) {
         _showSnack(
-          response.message.trim().isEmpty ? tr('unableToSendOtp') : response.message,
+          response.message.trim().isEmpty
+              ? tr('unableToSendOtp')
+              : response.message,
         );
         return;
       }
@@ -209,9 +220,7 @@ class _OtpScreenState extends State<OtpScreen> {
           decoration: BoxDecoration(
             shape: BoxShape.circle,
             color: Colors.white.withValues(alpha: 0.06),
-            border: Border.all(
-              color: Colors.white.withValues(alpha: 0.1),
-            ),
+            border: Border.all(color: Colors.white.withValues(alpha: 0.1)),
           ),
         ),
         SizedBox(
@@ -337,8 +346,9 @@ class _OtpScreenState extends State<OtpScreen> {
         color: const Color(0xFFF5F5F5),
         borderRadius: BorderRadius.circular(7.5),
         border: Border.all(
-          color:
-              isOtpComplete ? AppTheme.primaryIndigo : const Color(0xFFE0E0E0),
+          color: isOtpComplete
+              ? AppTheme.primaryIndigo
+              : const Color(0xFFE0E0E0),
           width: isOtpComplete ? 2.5 : 1.5,
         ),
       ),
