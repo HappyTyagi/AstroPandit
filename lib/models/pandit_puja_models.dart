@@ -15,6 +15,10 @@ class PanditPujaBooking {
   final String status;
   final String paymentMethod;
   final String transactionId;
+  final String packageCode;
+  final String packageName;
+  final String address;
+  final String mapUrl;
   final double totalPrice;
   final String? agoraChannel;
 
@@ -35,6 +39,10 @@ class PanditPujaBooking {
     required this.status,
     required this.paymentMethod,
     required this.transactionId,
+    required this.packageCode,
+    required this.packageName,
+    required this.address,
+    required this.mapUrl,
     required this.totalPrice,
     required this.agoraChannel,
   });
@@ -57,6 +65,10 @@ class PanditPujaBooking {
       status: (json['bookingStatus'] ?? json['status'] ?? '').toString(),
       paymentMethod: (json['paymentMethod'] ?? '').toString(),
       transactionId: (json['transactionId'] ?? '').toString(),
+      packageCode: (json['packageCode'] ?? 'BASE').toString(),
+      packageName: (json['packageName'] ?? '').toString(),
+      address: (json['address'] ?? '').toString(),
+      mapUrl: (json['mapUrl'] ?? '').toString(),
       totalPrice: _readDouble(json['totalPrice']),
       agoraChannel: (json['agoraChannel'] ?? json['channelName'])?.toString(),
     );
