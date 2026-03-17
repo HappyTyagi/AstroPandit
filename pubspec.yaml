@@ -33,6 +33,24 @@ flutter:
   uses-material-design: true
   assets:
     - .env
+  fonts:
+    - family: Calibri
+      fonts:
+        - asset: assets/fornt/Calibri.ttf
+          weight: 400
+        - asset: assets/fornt/Calibriitalic.ttf
+          weight: 400
+          style: italic
+        - asset: assets/fornt/Calibribold.ttf
+          weight: 700
+        - asset: assets/fornt/Calibribolditalic.ttf
+          weight: 700
+          style: italic
+        - asset: assets/fornt/Calibrilight.ttf
+          weight: 300
+        - asset: assets/fornt/Calibrilightitalic.ttf
+          weight: 300
+          style: italic
 
   # assets (commented due to missing files)
   # - assets/images/

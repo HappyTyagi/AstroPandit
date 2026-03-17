@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 class AppTheme {
+  static const String fontFamily = 'Calibri';
   // Brand Colors
   static const Color primaryIndigo = Color(0xFF2B1B4B);
   static const Color gold = Color(0xFFEFB810);
@@ -26,6 +27,7 @@ class AppTheme {
       scaffoldBackgroundColor: cream,
       colorScheme: scheme,
       textTheme: base.textTheme.apply(
+        fontFamily: fontFamily,
         bodyColor: ink,
         displayColor: ink,
       ),
@@ -107,10 +109,7 @@ class AppTheme {
           backgroundColor: primaryIndigo,
           foregroundColor: Colors.white,
           elevation: 0,
-          textStyle: const TextStyle(
-            fontWeight: FontWeight.w800,
-            fontSize: 15,
-          ),
+          textStyle: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(18),
           ),
@@ -121,10 +120,7 @@ class AppTheme {
           minimumSize: const Size.fromHeight(54),
           backgroundColor: primaryIndigo,
           foregroundColor: Colors.white,
-          textStyle: const TextStyle(
-            fontWeight: FontWeight.w800,
-            fontSize: 15,
-          ),
+          textStyle: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(18),
           ),
@@ -138,10 +134,7 @@ class AppTheme {
             color: primaryIndigo.withValues(alpha: 0.22),
             width: 1.2,
           ),
-          textStyle: const TextStyle(
-            fontWeight: FontWeight.w800,
-            fontSize: 15,
-          ),
+          textStyle: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(18),
           ),
@@ -177,6 +170,7 @@ class AppTheme {
       scaffoldBackgroundColor: const Color(0xFF0F1219),
       colorScheme: scheme,
       textTheme: base.textTheme.apply(
+        fontFamily: fontFamily,
         bodyColor: Colors.white,
         displayColor: Colors.white,
       ),
@@ -258,10 +252,7 @@ class AppTheme {
           backgroundColor: gold,
           foregroundColor: ink,
           elevation: 0,
-          textStyle: const TextStyle(
-            fontWeight: FontWeight.w800,
-            fontSize: 15,
-          ),
+          textStyle: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(18),
           ),
@@ -272,10 +263,7 @@ class AppTheme {
           minimumSize: const Size.fromHeight(54),
           backgroundColor: gold,
           foregroundColor: ink,
-          textStyle: const TextStyle(
-            fontWeight: FontWeight.w800,
-            fontSize: 15,
-          ),
+          textStyle: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(18),
           ),
@@ -289,10 +277,7 @@ class AppTheme {
             color: Colors.white.withValues(alpha: 0.24),
             width: 1.2,
           ),
-          textStyle: const TextStyle(
-            fontWeight: FontWeight.w800,
-            fontSize: 15,
-          ),
+          textStyle: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(18),
           ),
@@ -338,11 +323,7 @@ class AppTheme {
       gradient: LinearGradient(
         begin: Alignment.topCenter,
         end: Alignment.bottomCenter,
-        colors: <Color>[
-          Color(0xFFFFFBF3),
-          Color(0xFFF7F1FF),
-          cream,
-        ],
+        colors: <Color>[Color(0xFFFFFBF3), Color(0xFFF7F1FF), cream],
       ),
     );
   }
@@ -353,17 +334,13 @@ class AppTheme {
     double radius = 24,
     bool isDark = false,
   }) {
-    final resolvedColors = colors ??
+    final resolvedColors =
+        colors ??
         (isDark
-            ? <Color>[
-                const Color(0xFF1A1F2C),
-                const Color(0xFF141925),
-              ]
-            : <Color>[
-                Colors.white,
-                Colors.white.withValues(alpha: 0.92),
-              ]);
-    final resolvedBorder = border ??
+            ? <Color>[const Color(0xFF1A1F2C), const Color(0xFF141925)]
+            : <Color>[Colors.white, Colors.white.withValues(alpha: 0.92)]);
+    final resolvedBorder =
+        border ??
         Border.all(
           color: isDark
               ? Colors.white.withValues(alpha: 0.10)
