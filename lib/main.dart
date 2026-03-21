@@ -3,6 +3,7 @@ import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter/services.dart';
 import 'screens/splash_screen.dart';
 import 'screens/login_screen.dart';
 import 'screens/otp_screen.dart';
@@ -20,6 +21,14 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
       options: DefaultFirebaseOptions.currentPlatform,
     );
   } catch (_) {}
+}
+
+SystemUiOverlayStyle _statusBarOverlayStyle(bool isDark) {
+  return SystemUiOverlayStyle(
+    statusBarColor: Colors.transparent,
+    statusBarIconBrightness: isDark ? Brightness.light : Brightness.dark,
+    statusBarBrightness: isDark ? Brightness.dark : Brightness.light,
+  );
 }
 
 void main() async {
@@ -58,17 +67,21 @@ class AstroPanditApp extends StatelessWidget {
           darkTheme: AppTheme.darkTheme,
           themeMode: themeMode,
           builder: (context, child) {
+            final isDark = Theme.of(context).brightness == Brightness.dark;
             final mediaQuery = MediaQuery.of(context);
             final width = mediaQuery.size.width;
             final isTablet = width >= 600;
             final maxWidth = isTablet ? 900.0 : width;
-            return MediaQuery(
-              data: mediaQuery,
-              child: Align(
-                alignment: Alignment.topCenter,
-                child: ConstrainedBox(
-                  constraints: BoxConstraints(maxWidth: maxWidth),
-                  child: child ?? const SizedBox.shrink(),
+            return AnnotatedRegion<SystemUiOverlayStyle>(
+              value: _statusBarOverlayStyle(isDark),
+              child: MediaQuery(
+                data: mediaQuery,
+                child: Align(
+                  alignment: Alignment.topCenter,
+                  child: ConstrainedBox(
+                    constraints: BoxConstraints(maxWidth: maxWidth),
+                    child: child ?? const SizedBox.shrink(),
+                  ),
                 ),
               ),
             );
@@ -78,8 +91,9 @@ class AstroPanditApp extends StatelessWidget {
             '/': (context) => SplashScreen(),
             '/login': (context) => LoginScreen(),
             '/otp': (context) {
-              final args = ModalRoute.of(context)!.settings.arguments
-                  as Map<String, String>?;
+              final args =
+                  ModalRoute.of(context)!.settings.arguments
+                      as Map<String, String>?;
               return OtpScreen(
                 mobileNo: args?['mobileNo'] ?? '',
                 sessionId: args?['sessionId'] ?? '',

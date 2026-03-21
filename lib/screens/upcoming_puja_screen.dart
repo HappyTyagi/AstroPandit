@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'dart:async';
 
 import '../models/pandit_puja_models.dart';
 import '../services/app_preferences.dart';
@@ -29,20 +30,33 @@ class _UpcomingPujaScreenState extends State<UpcomingPujaScreen> {
   final PanditPujaService _service = PanditPujaService();
   final PujaCallService _callService = PujaCallService();
   final PujaSessionService _sessionService = PujaSessionService();
+  final TextEditingController _searchController = TextEditingController();
+  final ScrollController _scrollController = ScrollController();
 
-  late Future<List<PanditPujaBooking>> _future;
+  List<PanditPujaBooking> _bookings = <PanditPujaBooking>[];
+  bool _isLoading = true;
+  bool _isLoadingMore = false;
+  bool _hasNext = true;
+  int _nextPage = 0;
+  String _errorMessage = '';
+  static const int _pageSize = 12;
+  Timer? _searchDebounce;
   bool _isHindi = AppPreferences.isHindiNotifier.value;
 
   @override
   void initState() {
     super.initState();
     AppPreferences.isHindiNotifier.addListener(_handleLanguageChanged);
-    _future = _service.fetchPujas(completedOnly: widget.completedOnly);
+    _scrollController.addListener(_onScroll);
+    _loadBookings(reset: true);
   }
 
   @override
   void dispose() {
     AppPreferences.isHindiNotifier.removeListener(_handleLanguageChanged);
+    _searchDebounce?.cancel();
+    _searchController.dispose();
+    _scrollController.dispose();
     super.dispose();
   }
 
@@ -55,22 +69,106 @@ class _UpcomingPujaScreenState extends State<UpcomingPujaScreen> {
 
   String _tr(String en, String hi) => _isHindi ? hi : en;
 
-  Future<void> _reload() async {
-    setState(
-      () => _future = _service.fetchPujas(completedOnly: widget.completedOnly),
-    );
-    await _future;
+  void _onScroll() {
+    if (!_scrollController.hasClients) {
+      return;
+    }
+    final position = _scrollController.position;
+    if (position.pixels >= position.maxScrollExtent - 220) {
+      _loadBookings();
+    }
+  }
+
+  Future<void> _loadBookings({bool reset = false}) async {
+    if (reset) {
+      setState(() {
+        _isLoading = true;
+        _isLoadingMore = false;
+        _hasNext = true;
+        _nextPage = 0;
+        _errorMessage = '';
+      });
+    } else if (_isLoading || _isLoadingMore || !_hasNext) {
+      return;
+    } else {
+      setState(() => _isLoadingMore = true);
+    }
+
+    final int pageToLoad = reset ? 0 : _nextPage;
+    try {
+      final PanditPagedResult<PanditPujaBooking> page =
+          await _service.fetchPujasPage(
+        completedOnly: widget.completedOnly,
+        page: pageToLoad,
+        size: _pageSize,
+        search: _searchController.text,
+      );
+      if (!mounted) return;
+      setState(() {
+        final List<PanditPujaBooking> merged = reset
+            ? page.items
+            : <PanditPujaBooking>[..._bookings, ...page.items];
+        _bookings = _sortedBookings(merged);
+        _nextPage = page.page + 1;
+        _hasNext = page.hasNext;
+        _isLoading = false;
+        _isLoadingMore = false;
+        _errorMessage = '';
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        if (reset || _bookings.isEmpty) {
+          _errorMessage = e.toString();
+          _isLoading = false;
+        }
+        _isLoadingMore = false;
+      });
+    }
+  }
+
+  Future<void> _reload() => _loadBookings(reset: true);
+
+  void _onSearchChanged(String value) {
+    setState(() {});
+    _searchDebounce?.cancel();
+    _searchDebounce = Timer(const Duration(milliseconds: 420), () {
+      if (!mounted) return;
+      _loadBookings(reset: true);
+    });
   }
 
   bool _isJoinAllowed(DateTime slotTime) {
+    final now = DateTime.now();
     final joinOpensAt = slotTime.subtract(const Duration(minutes: 10));
-    return DateTime.now().isAfter(joinOpensAt);
+    return now.isAfter(joinOpensAt) && !now.isAfter(slotTime);
   }
 
-  Future<String?> _promptOtp({
-    required String title,
-    String? hintText,
-  }) async {
+  bool _isSlotExpired(DateTime slotTime) {
+    return DateTime.now().isAfter(slotTime);
+  }
+
+  List<PanditPujaBooking> _sortedBookings(List<PanditPujaBooking> items) {
+    final List<PanditPujaBooking> sorted = List<PanditPujaBooking>.from(items);
+    sorted.sort((PanditPujaBooking a, PanditPujaBooking b) {
+      final DateTime? aSlot = a.slotTime;
+      final DateTime? bSlot = b.slotTime;
+      if (aSlot == null && bSlot != null) return 1;
+      if (aSlot != null && bSlot == null) return -1;
+      if (aSlot != null && bSlot != null) {
+        final int slotCompare = bSlot.compareTo(aSlot);
+        if (slotCompare != 0) return slotCompare;
+      }
+      final DateTime aBooked =
+          a.bookedAt ?? DateTime.fromMillisecondsSinceEpoch(0);
+      final DateTime bBooked =
+          b.bookedAt ?? DateTime.fromMillisecondsSinceEpoch(0);
+      return bBooked.compareTo(aBooked);
+    });
+    return sorted;
+  }
+
+  Future<String?> _promptOtp({required String title, String? hintText}) async {
     final String effectiveHint =
         hintText ?? _tr('Enter 4-digit OTP', '4 अंकों का OTP दर्ज करें');
     final controller = TextEditingController();
@@ -174,8 +272,26 @@ class _UpcomingPujaScreenState extends State<UpcomingPujaScreen> {
     if (slotTime == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-            content: Text(_tr('Slot time is not assigned yet.',
-                'स्लॉट समय अभी असाइन नहीं है।'))),
+          content: Text(
+            _tr(
+              'Slot time is not assigned yet.',
+              'स्लॉट समय अभी असाइन नहीं है।',
+            ),
+          ),
+        ),
+      );
+      return;
+    }
+    if (_isSlotExpired(slotTime)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            _tr(
+              'This puja slot time has passed.',
+              'इस पूजा का स्लॉट समय बीत चुका है।',
+            ),
+          ),
+        ),
       );
       return;
     }
@@ -194,8 +310,9 @@ class _UpcomingPujaScreenState extends State<UpcomingPujaScreen> {
       return;
     }
 
-    final otp =
-        await _promptOtp(title: _tr('Enter Puja OTP', 'पूजा OTP दर्ज करें'));
+    final otp = await _promptOtp(
+      title: _tr('Enter Puja OTP', 'पूजा OTP दर्ज करें'),
+    );
     if (!mounted) return;
     if (otp == null || otp.trim().isEmpty) {
       return;
@@ -203,8 +320,13 @@ class _UpcomingPujaScreenState extends State<UpcomingPujaScreen> {
     if (!RegExp(r'^[0-9]{4}$').hasMatch(otp)) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-            content: Text(_tr('Please enter a valid 4-digit OTP',
-                'कृपया सही 4 अंकों का OTP दर्ज करें'))),
+          content: Text(
+            _tr(
+              'Please enter a valid 4-digit OTP',
+              'कृपया सही 4 अंकों का OTP दर्ज करें',
+            ),
+          ),
+        ),
       );
       return;
     }
@@ -214,8 +336,10 @@ class _UpcomingPujaScreenState extends State<UpcomingPujaScreen> {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-            content: Text(_tr(
-                'Puja started successfully', 'पूजा सफलतापूर्वक शुरू हो गई'))),
+          content: Text(
+            _tr('Puja started successfully', 'पूजा सफलतापूर्वक शुरू हो गई'),
+          ),
+        ),
       );
       await _reload();
     } catch (e) {
@@ -228,25 +352,29 @@ class _UpcomingPujaScreenState extends State<UpcomingPujaScreen> {
 
   Future<void> _endPuja(PanditPujaBooking booking) async {
     if (booking.startedAt == null) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
           content: Text(
-              _tr('Please start puja first.', 'कृपया पहले पूजा शुरू करें।'))));
+            _tr('Please start puja first.', 'कृपया पहले पूजा शुरू करें।'),
+          ),
+        ),
+      );
       return;
     }
     if (booking.completedAt != null) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-            content: Text(_tr('Puja is already completed.',
-                'पूजा पहले ही पूरी हो चुकी है।'))),
+          content: Text(
+            _tr('Puja is already completed.', 'पूजा पहले ही पूरी हो चुकी है।'),
+          ),
+        ),
       );
       return;
     }
 
     final otp = await _promptOtp(
-        title:
-            _tr('Enter Puja OTP to End', 'पूजा समाप्त करने का OTP दर्ज करें'));
+      title: _tr('Enter Puja OTP to End', 'पूजा समाप्त करने का OTP दर्ज करें'),
+    );
     if (!mounted) return;
     if (otp == null || otp.trim().isEmpty) {
       return;
@@ -254,8 +382,13 @@ class _UpcomingPujaScreenState extends State<UpcomingPujaScreen> {
     if (!RegExp(r'^[0-9]{4}$').hasMatch(otp)) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-            content: Text(_tr('Please enter a valid 4-digit OTP',
-                'कृपया सही 4 अंकों का OTP दर्ज करें'))),
+          content: Text(
+            _tr(
+              'Please enter a valid 4-digit OTP',
+              'कृपया सही 4 अंकों का OTP दर्ज करें',
+            ),
+          ),
+        ),
       );
       return;
     }
@@ -263,11 +396,13 @@ class _UpcomingPujaScreenState extends State<UpcomingPujaScreen> {
     try {
       await _sessionService.endPuja(bookingId: booking.bookingId, otp: otp);
       if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
           content: Text(
-              _tr('Puja ended successfully', 'पूजा सफलतापूर्वक समाप्त हुई'))));
+            _tr('Puja ended successfully', 'पूजा सफलतापूर्वक समाप्त हुई'),
+          ),
+        ),
+      );
       await _reload();
     } catch (e) {
       if (!mounted) return;
@@ -282,8 +417,26 @@ class _UpcomingPujaScreenState extends State<UpcomingPujaScreen> {
     if (slotTime == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-            content: Text(_tr('Slot time is not assigned yet.',
-                'स्लॉट समय अभी असाइन नहीं है।'))),
+          content: Text(
+            _tr(
+              'Slot time is not assigned yet.',
+              'स्लॉट समय अभी असाइन नहीं है।',
+            ),
+          ),
+        ),
+      );
+      return;
+    }
+    if (_isSlotExpired(slotTime)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            _tr(
+              'This puja slot time has passed.',
+              'इस पूजा का स्लॉट समय बीत चुका है।',
+            ),
+          ),
+        ),
       );
       return;
     }
@@ -304,17 +457,24 @@ class _UpcomingPujaScreenState extends State<UpcomingPujaScreen> {
     if (booking.startedAt == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-            content: Text(_tr('Please start puja with OTP first.',
-                'कृपया पहले OTP से पूजा शुरू करें।'))),
+          content: Text(
+            _tr(
+              'Please start puja with OTP first.',
+              'कृपया पहले OTP से पूजा शुरू करें।',
+            ),
+          ),
+        ),
       );
       return;
     }
     if (booking.completedAt != null) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(
-          content: Text(_tr(
-              'Puja already completed.', 'पूजा पहले ही पूरी हो चुकी है।'))));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            _tr('Puja already completed.', 'पूजा पहले ही पूरी हो चुकी है।'),
+          ),
+        ),
+      );
       return;
     }
 
@@ -349,132 +509,158 @@ class _UpcomingPujaScreenState extends State<UpcomingPujaScreen> {
     final bool isDark = Theme.of(context).brightness == Brightness.dark;
     final content = Container(
       decoration: AppTheme.pageBackdrop(isDark: isDark),
-      child: FutureBuilder<List<PanditPujaBooking>>(
-        future: _future,
-        builder: (context, snapshot) {
-          final waiting = snapshot.connectionState == ConnectionState.waiting;
-          final error = snapshot.error;
-          final items = snapshot.data ?? <PanditPujaBooking>[];
-
-          return RefreshIndicator(
-            onRefresh: _reload,
-            child: CustomScrollView(
-              physics: const AlwaysScrollableScrollPhysics(),
-              slivers: <Widget>[
-                SliverAppBar(
-                  pinned: true,
-                  backgroundColor: Colors.transparent,
-                  surfaceTintColor: Colors.transparent,
-                  automaticallyImplyLeading: !widget.embedded,
-                  title: Text(
-                    widget.completedOnly
-                        ? _tr('Complete Puja', 'पूर्ण पूजा')
-                        : _tr('Upcoming Puja', 'आगामी पूजा'),
-                    style: const TextStyle(fontWeight: FontWeight.w900),
-                  ),
-                  leading: widget.embedded
-                      ? null
-                      : IconButton(
-                          onPressed: () => Navigator.pop(context),
-                          icon: const Icon(Icons.arrow_back_rounded),
-                        ),
-                  actions: <Widget>[
-                    IconButton(
-                      onPressed: _reload,
-                      icon: const Icon(Icons.refresh_rounded),
-                      tooltip: _tr('Refresh', 'रीफ्रेश'),
+      child: RefreshIndicator(
+        onRefresh: _reload,
+        child: CustomScrollView(
+          controller: _scrollController,
+          physics: const AlwaysScrollableScrollPhysics(),
+          slivers: <Widget>[
+            SliverAppBar(
+              pinned: true,
+              backgroundColor: Colors.transparent,
+              surfaceTintColor: Colors.transparent,
+              automaticallyImplyLeading: !widget.embedded,
+              title: Text(
+                widget.completedOnly
+                    ? _tr('Complete Puja', 'पूर्ण पूजा')
+                    : _tr('Upcoming Puja', 'आगामी पूजा'),
+                style: const TextStyle(fontWeight: FontWeight.w900),
+              ),
+              leading: widget.embedded
+                  ? null
+                  : IconButton(
+                      onPressed: () => Navigator.pop(context),
+                      icon: const Icon(Icons.arrow_back_rounded),
                     ),
-                  ],
+              actions: <Widget>[
+                IconButton(
+                  onPressed: _reload,
+                  icon: const Icon(Icons.refresh_rounded),
+                  tooltip: _tr('Refresh', 'रीफ्रेश'),
                 ),
-                if (!widget.completedOnly)
-                  SliverToBoxAdapter(
-                    child: Padding(
-                      padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 18,
-                          vertical: 14,
+              ],
+            ),
+            if (!widget.completedOnly)
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 18,
+                      vertical: 14,
+                    ),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(alpha: 0.75),
+                      borderRadius: BorderRadius.circular(18),
+                      border: Border.all(
+                        color: AppTheme.primaryIndigo.withValues(alpha: 0.08),
+                      ),
+                    ),
+                    child: Row(
+                      children: <Widget>[
+                        Icon(
+                          Icons.schedule_rounded,
+                          color: AppTheme.primaryIndigo.withValues(alpha: 0.85),
                         ),
-                        decoration: BoxDecoration(
-                          color: Colors.white.withValues(alpha: 0.75),
-                          borderRadius: BorderRadius.circular(18),
-                          border: Border.all(
-                            color: AppTheme.primaryIndigo.withValues(
-                              alpha: 0.08,
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Text(
+                            _tr(
+                              'Join opens 10 minutes before the scheduled slot.',
+                              'जॉइन निर्धारित स्लॉट से 10 मिनट पहले खुलेगा।',
+                            ),
+                            style: TextStyle(
+                              color: AppTheme.muted.withValues(alpha: 0.95),
+                              fontWeight: FontWeight.w600,
                             ),
                           ),
                         ),
-                        child: Row(
-                          children: <Widget>[
-                            Icon(
-                              Icons.schedule_rounded,
-                              color: AppTheme.primaryIndigo.withValues(
-                                alpha: 0.85,
-                              ),
-                            ),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: Text(
-                                _tr(
-                                  'Join opens 10 minutes before the scheduled slot.',
-                                  'जॉइन निर्धारित स्लॉट से 10 मिनट पहले खुलेगा।',
-                                ),
-                                style: TextStyle(
-                                  color: AppTheme.muted.withValues(alpha: 0.95),
-                                  fontWeight: FontWeight.w600,
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
+                      ],
                     ),
                   ),
-                if (waiting)
-                  const SliverFillRemaining(
-                    hasScrollBody: false,
-                    child: Center(child: CircularProgressIndicator()),
-                  )
-                else if (error != null)
-                  SliverFillRemaining(
-                    hasScrollBody: false,
-                    child: _ErrorState(
-                      isHindi: _isHindi,
-                      message: error.toString(),
-                      onRetry: _reload,
-                    ),
-                  )
-                else if (items.isEmpty)
-                  SliverFillRemaining(
-                    hasScrollBody: false,
-                    child: _EmptyState(
-                      completedOnly: widget.completedOnly,
-                      isHindi: _isHindi,
-                    ),
-                  )
-                else
-                  SliverPadding(
-                    padding: const EdgeInsets.fromLTRB(16, 12, 16, 18),
-                    sliver: SliverList.separated(
-                      itemCount: items.length,
-                      separatorBuilder: (_, _) => const SizedBox(height: 12),
-                      itemBuilder: (context, index) {
-                        return _BookingCard(
-                          booking: items[index],
-                          isHindi: _isHindi,
-                          isJoinAllowed: _isJoinAllowed,
-                          onStart: _startPuja,
-                          onJoin: _join,
-                          onEnd: _endPuja,
-                          readOnly: widget.completedOnly,
-                        );
-                      },
-                    ),
+                ),
+              ),
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(16, 8, 16, 2),
+                child: TextField(
+                  controller: _searchController,
+                  onChanged: _onSearchChanged,
+                  textInputAction: TextInputAction.search,
+                  decoration: InputDecoration(
+                    hintText: _tr('Search puja bookings', 'पूजा बुकिंग खोजें'),
+                    prefixIcon: const Icon(Icons.search_rounded),
+                    suffixIcon: _searchController.text.trim().isEmpty
+                        ? null
+                        : IconButton(
+                            onPressed: () {
+                              _searchController.clear();
+                              _reload();
+                              setState(() {});
+                            },
+                            icon: const Icon(Icons.close_rounded),
+                          ),
                   ),
-              ],
+                ),
+              ),
             ),
-          );
-        },
+            if (_isLoading)
+              const SliverFillRemaining(
+                hasScrollBody: false,
+                child: Center(child: CircularProgressIndicator()),
+              )
+            else if (_errorMessage.isNotEmpty && _bookings.isEmpty)
+              SliverFillRemaining(
+                hasScrollBody: false,
+                child: _ErrorState(
+                  isHindi: _isHindi,
+                  message: _errorMessage,
+                  onRetry: _reload,
+                ),
+              )
+            else if (_bookings.isEmpty)
+              SliverFillRemaining(
+                hasScrollBody: false,
+                child: _EmptyState(
+                  completedOnly: widget.completedOnly,
+                  isHindi: _isHindi,
+                ),
+              )
+            else
+              SliverPadding(
+                padding: const EdgeInsets.fromLTRB(16, 12, 16, 18),
+                sliver: SliverList.separated(
+                  itemCount: _bookings.length,
+                  separatorBuilder: (_, _) => const SizedBox(height: 12),
+                  itemBuilder: (context, index) {
+                    return _BookingCard(
+                      booking: _bookings[index],
+                      isHindi: _isHindi,
+                      isJoinAllowed: _isJoinAllowed,
+                      isSlotExpired: _isSlotExpired,
+                      onStart: _startPuja,
+                      onJoin: _join,
+                      onEnd: _endPuja,
+                      readOnly: widget.completedOnly,
+                    );
+                  },
+                ),
+              ),
+            if (_isLoadingMore)
+              const SliverToBoxAdapter(
+                child: Padding(
+                  padding: EdgeInsets.symmetric(vertical: 14),
+                  child: Center(
+                    child: SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(strokeWidth: 2.2),
+                    ),
+                  ),
+                ),
+              ),
+          ],
+        ),
       ),
     );
 
@@ -610,6 +796,7 @@ class _BookingCard extends StatelessWidget {
   final PanditPujaBooking booking;
   final bool isHindi;
   final bool Function(DateTime slotTime) isJoinAllowed;
+  final bool Function(DateTime slotTime) isSlotExpired;
   final Future<void> Function(PanditPujaBooking booking) onStart;
   final Future<void> Function(PanditPujaBooking booking) onJoin;
   final Future<void> Function(PanditPujaBooking booking) onEnd;
@@ -619,6 +806,7 @@ class _BookingCard extends StatelessWidget {
     required this.booking,
     required this.isHindi,
     required this.isJoinAllowed,
+    required this.isSlotExpired,
     required this.onStart,
     required this.onJoin,
     required this.onEnd,
@@ -645,24 +833,48 @@ class _BookingCard extends StatelessWidget {
   }
 
   Future<void> _openMap(BuildContext context) async {
-    final String resolved = booking.mapUrl.trim().isNotEmpty
-        ? booking.mapUrl.trim()
-        : 'https://www.google.com/maps/search/?api=1&query=${Uri.encodeComponent(booking.address.trim())}';
-    if (booking.address.trim().isEmpty) {
+    Uri? navigationUri;
+    final double? latitude = booking.latitude;
+    final double? longitude = booking.longitude;
+    final bool hasCoordinates = latitude != null &&
+        longitude != null &&
+        latitude >= -90 &&
+        latitude <= 90 &&
+        longitude >= -180 &&
+        longitude <= 180;
+
+    if (hasCoordinates) {
+      navigationUri = Uri.parse(
+        'https://www.google.com/maps/dir/?api=1&destination=$latitude,$longitude&travelmode=driving',
+      );
+    } else if (booking.mapUrl.trim().isNotEmpty) {
+      navigationUri = Uri.tryParse(booking.mapUrl.trim());
+    } else if (booking.address.trim().isNotEmpty) {
+      navigationUri = Uri.parse(
+        'https://www.google.com/maps/search/?api=1&query=${Uri.encodeComponent(booking.address.trim())}',
+      );
+    }
+
+    if (navigationUri == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-            content:
-                Text(_tr('Address is not available.', 'पता उपलब्ध नहीं है।'))),
+          content: Text(
+            _tr('Address is not available.', 'पता उपलब्ध नहीं है।'),
+          ),
+        ),
       );
       return;
     }
-    final Uri uri = Uri.parse(resolved);
-    final bool opened =
-        await launchUrl(uri, mode: LaunchMode.externalApplication);
+
+    final bool opened = await launchUrl(
+      navigationUri,
+      mode: LaunchMode.externalApplication,
+    );
     if (!opened && context.mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-            content: Text(_tr('Unable to open map.', 'मैप नहीं खुल पाया।'))),
+          content: Text(_tr('Unable to open map.', 'मैप नहीं खुल पाया।')),
+        ),
       );
     }
   }
@@ -743,6 +955,12 @@ class _BookingCard extends StatelessWidget {
                 ),
                 const SizedBox(height: 18),
                 _DetailBlock(
+                  icon: Icons.confirmation_number_rounded,
+                  label: _tr('Puja Number', 'पूजा नंबर'),
+                  value: booking.pujaNumber,
+                ),
+                const SizedBox(height: 10),
+                _DetailBlock(
                   icon: Icons.person_rounded,
                   label: _tr('User Name', 'यूज़र नाम'),
                   value: booking.userName.isEmpty
@@ -755,19 +973,40 @@ class _BookingCard extends StatelessWidget {
                   label: _tr('Puja Slot', 'पूजा स्लॉट'),
                   value: booking.slotTime == null
                       ? _tr('Slot pending', 'स्लॉट लंबित')
-                      : DateFormat('dd MMM yyyy • hh:mm a')
-                          .format(booking.slotTime!),
+                      : DateFormat(
+                          'dd MMM yyyy • hh:mm a',
+                        ).format(booking.slotTime!),
                 ),
                 if (booking.bookedAt != null) ...<Widget>[
                   const SizedBox(height: 10),
                   _DetailBlock(
                     icon: Icons.event_note_rounded,
                     label: _tr('Booked At', 'बुकिंग समय'),
-                    value: DateFormat('dd MMM yyyy • hh:mm a').format(
-                      booking.bookedAt!,
-                    ),
+                    value: DateFormat(
+                      'dd MMM yyyy • hh:mm a',
+                    ).format(booking.bookedAt!),
                   ),
                 ],
+                const SizedBox(height: 10),
+                _DetailBlock(
+                  icon: Icons.play_circle_outline_rounded,
+                  label: _tr('Puja Start Time', 'पूजा शुरू समय'),
+                  value: booking.startedAt == null
+                      ? _tr('Not started yet', 'अभी शुरू नहीं हुई')
+                      : DateFormat(
+                          'dd MMM yyyy • hh:mm a',
+                        ).format(booking.startedAt!),
+                ),
+                const SizedBox(height: 10),
+                _DetailBlock(
+                  icon: Icons.stop_circle_outlined,
+                  label: _tr('Puja End Time', 'पूजा समाप्त समय'),
+                  value: booking.completedAt == null
+                      ? _tr('Not ended yet', 'अभी समाप्त नहीं हुई')
+                      : DateFormat(
+                          'dd MMM yyyy • hh:mm a',
+                        ).format(booking.completedAt!),
+                ),
                 const SizedBox(height: 10),
                 _DetailBlock(
                   icon: Icons.task_alt_rounded,
@@ -809,8 +1048,10 @@ class _BookingCard extends StatelessWidget {
                             const SizedBox(height: 6),
                             Text(
                               booking.address.trim().isEmpty
-                                  ? _tr('Address not available',
-                                      'पता उपलब्ध नहीं है')
+                                  ? _tr(
+                                      'Address not available',
+                                      'पता उपलब्ध नहीं है',
+                                    )
                                   : booking.address.trim(),
                               style: TextStyle(
                                 height: 1.4,
@@ -848,10 +1089,17 @@ class _BookingCard extends StatelessWidget {
     final slotTime = booking.slotTime;
     final started = booking.startedAt != null;
     final completed = booking.completedAt != null;
-    final joinEnabled =
-        started && !completed && slotTime != null && isJoinAllowed(slotTime);
-    final startEnabled =
-        !started && !completed && slotTime != null && isJoinAllowed(slotTime);
+    final slotExpired = slotTime != null && isSlotExpired(slotTime);
+    final joinEnabled = started &&
+        !completed &&
+        slotTime != null &&
+        !slotExpired &&
+        isJoinAllowed(slotTime);
+    final startEnabled = !started &&
+        !completed &&
+        slotTime != null &&
+        !slotExpired &&
+        isJoinAllowed(slotTime);
     final bool dark = Theme.of(context).brightness == Brightness.dark;
 
     return Container(
@@ -881,7 +1129,10 @@ class _BookingCard extends StatelessWidget {
                   ),
                   const SizedBox(width: 8),
                   _StatusChip(
-                      started: started, completed: completed, isHindi: isHindi),
+                    started: started,
+                    completed: completed,
+                    isHindi: isHindi,
+                  ),
                 ],
               ),
             ),
@@ -910,9 +1161,7 @@ class _BookingCard extends StatelessWidget {
                   Expanded(
                     child: Text(
                       '${_tr('Package', 'पैकेज')}: ${_packageLabel()}',
-                      style: const TextStyle(
-                        fontWeight: FontWeight.w800,
-                      ),
+                      style: const TextStyle(fontWeight: FontWeight.w800),
                     ),
                   ),
                   Icon(
@@ -930,6 +1179,11 @@ class _BookingCard extends StatelessWidget {
             label:
                 '${_tr('User', 'यूज़र')}: ${booking.userName.isEmpty ? _tr('Unknown', 'अज्ञात') : booking.userName}',
           ),
+          const SizedBox(height: 8),
+          _InfoRow(
+            icon: Icons.confirmation_number_rounded,
+            label: '${_tr('Puja Number', 'पूजा नंबर')}: ${booking.pujaNumber}',
+          ),
           const SizedBox(height: 12),
           _InfoRow(
             icon: Icons.schedule_rounded,
@@ -937,24 +1191,24 @@ class _BookingCard extends StatelessWidget {
                 ? _tr('Slot pending', 'स्लॉट लंबित')
                 : DateFormat('dd MMM yyyy • hh:mm a').format(slotTime),
           ),
-          if (booking.startedAt != null)
-            Padding(
-              padding: const EdgeInsets.only(top: 8),
-              child: _InfoRow(
-                icon: Icons.play_circle_outline_rounded,
-                label:
-                    '${_tr('Started', 'शुरू')} • ${DateFormat('dd MMM, hh:mm a').format(booking.startedAt!)}',
-              ),
+          Padding(
+            padding: const EdgeInsets.only(top: 8),
+            child: _InfoRow(
+              icon: Icons.play_circle_outline_rounded,
+              label: booking.startedAt == null
+                  ? _tr('Started • Not started yet', 'शुरू • अभी शुरू नहीं हुई')
+                  : '${_tr('Started', 'शुरू')} • ${DateFormat('dd MMM, hh:mm a').format(booking.startedAt!)}',
             ),
-          if (booking.completedAt != null)
-            Padding(
-              padding: const EdgeInsets.only(top: 8),
-              child: _InfoRow(
-                icon: Icons.verified_rounded,
-                label:
-                    '${_tr('Ended', 'समाप्त')} • ${DateFormat('dd MMM, hh:mm a').format(booking.completedAt!)}',
-              ),
+          ),
+          Padding(
+            padding: const EdgeInsets.only(top: 8),
+            child: _InfoRow(
+              icon: Icons.verified_rounded,
+              label: booking.completedAt == null
+                  ? _tr('Ended • Not ended yet', 'समाप्त • अभी समाप्त नहीं हुई')
+                  : '${_tr('Ended', 'समाप्त')} • ${DateFormat('dd MMM, hh:mm a').format(booking.completedAt!)}',
             ),
+          ),
           const SizedBox(height: 14),
           Divider(color: AppTheme.primaryIndigo.withValues(alpha: 0.08)),
           const SizedBox(height: 14),
@@ -978,6 +1232,26 @@ class _BookingCard extends StatelessWidget {
                         'Completion status pending from server',
                         'सर्वर से पूर्ण स्थिति लंबित है',
                       ),
+                textAlign: TextAlign.center,
+                style: const TextStyle(fontWeight: FontWeight.w800),
+              ),
+            )
+          else if (!started && slotExpired)
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+              decoration: BoxDecoration(
+                color: AppTheme.danger.withValues(alpha: 0.08),
+                borderRadius: BorderRadius.circular(18),
+                border: Border.all(
+                  color: AppTheme.danger.withValues(alpha: 0.18),
+                ),
+              ),
+              child: Text(
+                _tr(
+                  'Puja slot time is passed. Start/Join is unavailable.',
+                  'पूजा स्लॉट समय बीत चुका है। Start/Join उपलब्ध नहीं है।',
+                ),
                 textAlign: TextAlign.center,
                 style: const TextStyle(fontWeight: FontWeight.w800),
               ),
@@ -1007,26 +1281,58 @@ class _BookingCard extends StatelessWidget {
               ],
             )
           else
-            Row(
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
               children: <Widget>[
-                Expanded(
-                  child: FilledButton.icon(
-                    onPressed: joinEnabled ? () => onJoin(booking) : null,
-                    icon: const Icon(Icons.videocam_rounded),
-                    label: Text(_tr('Join', 'जॉइन')),
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: FilledButton.icon(
-                    onPressed: () => onEnd(booking),
-                    style: FilledButton.styleFrom(
-                      backgroundColor: AppTheme.danger,
-                      foregroundColor: Colors.white,
+                if (slotExpired) ...<Widget>[
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 12,
                     ),
-                    icon: const Icon(Icons.stop_circle_rounded),
-                    label: Text(_tr('End', 'समाप्त करें')),
+                    decoration: BoxDecoration(
+                      color: AppTheme.danger.withValues(alpha: 0.08),
+                      borderRadius: BorderRadius.circular(14),
+                      border: Border.all(
+                        color: AppTheme.danger.withValues(alpha: 0.18),
+                      ),
+                    ),
+                    child: Text(
+                      _tr(
+                        'Slot time is passed. Join is unavailable.',
+                        'स्लॉट समय बीत चुका है। Join उपलब्ध नहीं है।',
+                      ),
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(fontWeight: FontWeight.w700),
+                    ),
                   ),
+                  const SizedBox(height: 10),
+                ],
+                Row(
+                  children: <Widget>[
+                    if (!slotExpired) ...<Widget>[
+                      Expanded(
+                        child: FilledButton.icon(
+                          onPressed: joinEnabled ? () => onJoin(booking) : null,
+                          icon: const Icon(Icons.videocam_rounded),
+                          label: Text(_tr('Join', 'जॉइन')),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                    ],
+                    Expanded(
+                      child: FilledButton.icon(
+                        onPressed: () => onEnd(booking),
+                        style: FilledButton.styleFrom(
+                          backgroundColor: AppTheme.danger,
+                          foregroundColor: Colors.white,
+                        ),
+                        icon: const Icon(Icons.stop_circle_rounded),
+                        label: Text(_tr('End', 'समाप्त करें')),
+                      ),
+                    ),
+                  ],
                 ),
               ],
             ),

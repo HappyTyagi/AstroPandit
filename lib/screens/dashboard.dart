@@ -4,6 +4,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../services/api_client.dart';
 import '../services/app_preferences.dart';
 import '../theme/app_theme.dart';
+import '../widgets/cosmic_bottom_nav.dart';
 import 'upcoming_puja_screen.dart';
 
 class Dashboard extends StatefulWidget {
@@ -87,27 +88,25 @@ class _DashboardState extends State<Dashboard> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      extendBody: false,
       body: _buildCurrentTab(),
-      bottomNavigationBar: NavigationBar(
-        selectedIndex: _selectedTab,
-        onDestinationSelected: (index) {
+      bottomNavigationBar: CosmicBottomNav(
+        currentIndex: _selectedTab,
+        onTap: (int index) {
           if (_selectedTab == index) return;
           setState(() => _selectedTab = index);
         },
-        destinations: <NavigationDestination>[
-          NavigationDestination(
-            icon: const Icon(Icons.calendar_month_rounded),
-            selectedIcon: const Icon(Icons.calendar_month_rounded),
+        items: <CosmicBottomNavItem>[
+          CosmicBottomNavItem(
+            icon: Icons.calendar_month_rounded,
             label: _tr('Upcoming Puja', 'आगामी पूजा'),
           ),
-          NavigationDestination(
-            icon: const Icon(Icons.task_alt_rounded),
-            selectedIcon: const Icon(Icons.task_alt_rounded),
+          CosmicBottomNavItem(
+            icon: Icons.task_alt_rounded,
             label: _tr('Complete Puja', 'पूर्ण पूजा'),
           ),
-          NavigationDestination(
-            icon: const Icon(Icons.settings_rounded),
-            selectedIcon: const Icon(Icons.settings_rounded),
+          CosmicBottomNavItem(
+            icon: Icons.settings_rounded,
             label: _tr('Setting', 'सेटिंग'),
           ),
         ],
@@ -250,8 +249,10 @@ class _SettingsTab extends StatelessWidget {
                       style: const TextStyle(fontWeight: FontWeight.w700),
                     ),
                     subtitle: Text(
-                      tr('Sync latest name and number',
-                          'नया नाम और नंबर सिंक करें'),
+                      tr(
+                        'Sync latest name and number',
+                        'नया नाम और नंबर सिंक करें',
+                      ),
                     ),
                     onTap: onReloadProfile,
                   ),
@@ -279,8 +280,10 @@ class _SettingsTab extends StatelessWidget {
                       style: const TextStyle(fontWeight: FontWeight.w700),
                     ),
                     subtitle: Text(
-                      tr('Enable premium dark UI',
-                          'प्रीमियम डार्क UI चालू करें'),
+                      tr(
+                        'Enable premium dark UI',
+                        'प्रीमियम डार्क UI चालू करें',
+                      ),
                     ),
                     onChanged: onSetDarkMode,
                   ),
